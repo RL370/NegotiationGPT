@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-# NegotiationGPT_refactored.py
-# Custom transformer with LoRA, proper initialization, and adaptive learning rates
+# VoterEnsembleGPT_refactored.py
+# 5-voter ensemble - each voter trained on one vote column (vote_1 to vote_5)
 # Splits data by conversation (transcript_name)
 
 import math
-import re
 import random
 from collections import Counter
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Dict
 
 import pandas as pd
 import torch
@@ -66,12 +65,10 @@ MIN_LR_RATIO = 0.01
 LAMBDA_LM = 1.0
 LAMBDA_CODE = 2.0
 LAMBDA_SPEAKER = 1.0
-LAMBDA_CORR = 0.1
 
-# Generation config
-MAX_NEW_TOKENS = 80
-TEMPERATURE = 0.9
-TOP_P = 0.9
+# Ensemble config - 5 voters, one per vote column
+NUM_VOTERS = 5
+VOTER_LABEL_COLS = ["vote_1", "vote_2", "vote_3", "vote_4", "vote_5"]
 
 # Sliding window config
 SLIDING_WINDOW_SIZE = 10
@@ -81,7 +78,6 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Data config - Only Sonnet4 CSV
 DATA_FILE = "Sonnet4-consolidated.csv"
 TEXT_COL = "content"
-LABEL_COL = "final_code"
 
 CHECKPOINT_DIR = "checkpoints"
 
@@ -105,6 +101,7 @@ class NegotiationTokenizer:
         return len(self.stoi)
 
     def build_from_files(self, paths, text_column="content"):
+        import re
         counter = Counter()
         for path in paths:
             p = Path(path)
@@ -119,7 +116,7 @@ class NegotiationTokenizer:
                 text_column_lower = text_column.lower()
                 if text_column_lower in df.columns:
                     for text in df[text_column_lower].dropna().astype(str):
-                        tokens = self._tokenize(text)
+                        tokens = re.findall(r"\w+|[^\w\s]", text.lower().strip())
                         counter.update(tokens)
             except Exception as e:
                 print(f"[Tokenizer] Error reading {p}: {e}")
@@ -132,13 +129,9 @@ class NegotiationTokenizer:
 
         print(f"[Tokenizer] Vocab size: {self.vocab_size}")
 
-    def _tokenize(self, text):
-        text = text.lower().strip()
-        tokens = re.findall(r"\w+|[^\w\s]", text)
-        return tokens
-
     def encode(self, text, max_length=None, add_special_tokens=True):
-        tokens = self._tokenize(text)
+        import re
+        tokens = re.findall(r"\w+|[^\w\s]", text.lower().strip())
         ids = [self.stoi.get(t, self.unk_token_id) for t in tokens]
         if add_special_tokens:
             ids = [self.bos_token_id] + ids + [self.eos_token_id]
@@ -232,7 +225,6 @@ class MultiHeadAttention(nn.Module):
         self.d_model = d_model
         self.num_heads = num_heads
         self.head_dim = d_model // num_heads
-        assert self.head_dim * num_heads == d_model
 
         self.q_proj = LoRALinear(d_model, d_model)
         self.k_proj = LoRALinear(d_model, d_model)
@@ -253,7 +245,6 @@ class MultiHeadAttention(nn.Module):
         q, k = apply_rotary_pos_emb(q, k, cos, sin)
 
         scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(self.head_dim)
-
         if mask is not None:
             scores = scores.masked_fill(mask == 0, -1e9)
 
@@ -340,14 +331,17 @@ class ClassificationHead(nn.Module):
         return self.classifier(pooled)
 
 # =========================================================================
-# 6. MODEL
+# 6. VOTER MODEL
 # =========================================================================
 
-class NegotiationGPT(nn.Module):
-    def __init__(self, vocab_size):
+class VoterModel(nn.Module):
+    def __init__(self, vocab_size, voter_id=0):
         super().__init__()
+        self.voter_id = voter_id
         self.d_model = D_MODEL
         self.num_layers = NUM_LAYERS
+
+        torch.manual_seed(42 + voter_id)
 
         self.embedding = nn.Embedding(vocab_size, D_MODEL)
         nn.init.normal_(self.embedding.weight, mean=0, std=0.02)
@@ -358,13 +352,11 @@ class NegotiationGPT(nn.Module):
         ])
 
         self.final_norm = RMSNorm(D_MODEL)
-
         self.lm_head = nn.Linear(D_MODEL, vocab_size, bias=False)
         self.lm_head.weight = self.embedding.weight
 
         self.code_head = ClassificationHead(D_MODEL, NEGOTIATION_CODE_CLASSES)
         self.speaker_head = ClassificationHead(D_MODEL, SPEAKER_CLASSES)
-        self.corr_head = ClassificationHead(D_MODEL, 2)
 
     def forward(self, input_ids, attention_mask=None):
         bsz, seq_len = input_ids.shape
@@ -384,25 +376,25 @@ class NegotiationGPT(nn.Module):
         lm_logits = self.lm_head(x)
         code_logits = self.code_head(x, attention_mask)
         speaker_logits = self.speaker_head(x, attention_mask)
-        corr_logits = self.corr_head(x, attention_mask)
 
-        return lm_logits, code_logits, corr_logits, speaker_logits
+        return lm_logits, code_logits, speaker_logits
 
 # =========================================================================
 # 7. DATASET - Split by conversation
 # =========================================================================
 
-class NegotiationDataset(torch.utils.data.Dataset):
+class VoterDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         df: pd.DataFrame,
         tokenizer,
+        label_column: str,
         text_column: str = TEXT_COL,
-        label_column: str = LABEL_COL,
         max_seq_len: int = MAX_SEQ_LEN,
     ):
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
+        self.label_column = label_column
 
         df.columns = [c.lower() for c in df.columns]
         text_column = text_column.lower()
@@ -421,7 +413,10 @@ class NegotiationDataset(torch.utils.data.Dataset):
 
         if label_column in df.columns:
             code_ids = [map_code(c) for c in df[label_column]]
+            valid_count = sum(1 for c in code_ids if c != -100)
+            print(f"[Dataset] {label_column}: {valid_count}/{len(code_ids)} valid labels")
         else:
+            print(f"[Dataset] Warning: {label_column} not found, using -100")
             code_ids = [-100] * len(df)
 
         # Map speakers
@@ -476,7 +471,6 @@ class NegotiationDataset(torch.utils.data.Dataset):
                 'lm_labels': lm_labels,
                 'code_label': torch.tensor(code_id, dtype=torch.long),
                 'speaker_label': torch.tensor(speaker_id, dtype=torch.long),
-                'corr_label': torch.tensor(0, dtype=torch.long),
                 'text': text,
                 'transcript_name': transcript_name,
             })
@@ -488,11 +482,11 @@ class NegotiationDataset(torch.utils.data.Dataset):
         return self.samples[idx]
 
 # =========================================================================
-# 8. TRAINER WITH ADAPTIVE LEARNING RATES
+# 8. VOTER TRAINER WITH ADAPTIVE LR
 # =========================================================================
 
-class Trainer:
-    def __init__(self, model, train_data, val_data, test_data=None):
+class VoterTrainer:
+    def __init__(self, model: VoterModel, train_data, val_data, voter_name="voter"):
         self.model = model.to(DEVICE)
         self.train_loader = torch.utils.data.DataLoader(
             train_data, batch_size=BATCH_SIZE, shuffle=True
@@ -500,14 +494,11 @@ class Trainer:
         self.val_loader = torch.utils.data.DataLoader(
             val_data, batch_size=BATCH_SIZE, shuffle=False
         )
-        self.test_loader = torch.utils.data.DataLoader(
-            test_data, batch_size=BATCH_SIZE, shuffle=False
-        ) if test_data else None
+        self.voter_name = voter_name
 
         param_groups = self._build_adaptive_param_groups()
         self.optimizer = torch.optim.AdamW(param_groups, weight_decay=0.01)
 
-        self.current_epoch = 0
         self.steps_per_epoch = len(self.train_loader)
         self.total_steps = self.steps_per_epoch * EPOCHS
         self.warmup_steps = self.steps_per_epoch * WARMUP_EPOCHS
@@ -516,7 +507,6 @@ class Trainer:
         self.ce_lm = nn.CrossEntropyLoss(ignore_index=-100)
         self.ce_code = nn.CrossEntropyLoss(ignore_index=-100)
         self.ce_speaker = nn.CrossEntropyLoss(ignore_index=-100)
-        self.ce_corr = nn.CrossEntropyLoss(ignore_index=-100)
 
         self.best_val_loss = float('inf')
         self.best_val_acc = 0.0
@@ -524,10 +514,8 @@ class Trainer:
     def _build_adaptive_param_groups(self):
         param_groups = []
 
-        embedding_params = []
-        for name, param in self.model.named_parameters():
-            if 'embedding' in name and param.requires_grad:
-                embedding_params.append(param)
+        embedding_params = [p for n, p in self.model.named_parameters()
+                          if 'embedding' in n and p.requires_grad]
         if embedding_params:
             param_groups.append({
                 'params': embedding_params,
@@ -571,41 +559,28 @@ class Trainer:
                     'name': f'layer_{layer_idx}_lora'
                 })
 
-        head_params = []
-        for name, param in self.model.named_parameters():
-            if ('head' in name) and param.requires_grad and 'lm_head' not in name:
-                head_params.append(param)
+        head_params = [p for n, p in self.model.named_parameters()
+                      if 'head' in n and 'lm_head' not in n and p.requires_grad]
         if head_params:
             param_groups.append({
                 'params': head_params,
                 'lr': BASE_LR * HEAD_LR_MULT,
-                'name': 'classification_heads'
+                'name': 'heads'
             })
 
-        other_params = []
-        for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                already_added = False
-                for pg in param_groups:
-                    if any(p is param for p in pg['params']):
-                        already_added = True
-                        break
-                if not already_added:
-                    other_params.append(param)
+        added = set()
+        for pg in param_groups:
+            for p in pg['params']:
+                added.add(id(p))
+
+        other_params = [p for p in self.model.parameters()
+                       if p.requires_grad and id(p) not in added]
         if other_params:
             param_groups.append({
                 'params': other_params,
                 'lr': BASE_LR,
                 'name': 'other'
             })
-
-        total_params = 0
-        print("\n[Adaptive LR] Parameter groups:")
-        for pg in param_groups:
-            num_params = sum(p.numel() for p in pg['params'])
-            total_params += num_params
-            print(f"  {pg['name']}: {num_params:,} params, lr={pg['lr']:.2e}")
-        print(f"  Total trainable: {total_params:,}")
 
         return param_groups
 
@@ -618,26 +593,18 @@ class Trainer:
             lr_factor = MIN_LR_RATIO + (1 - MIN_LR_RATIO) * 0.5 * (1 + math.cos(math.pi * progress))
 
         for param_group in self.optimizer.param_groups:
-            base_lr = param_group.get('initial_lr', param_group['lr'])
             if 'initial_lr' not in param_group:
                 param_group['initial_lr'] = param_group['lr']
-            param_group['lr'] = base_lr * lr_factor
-
-    def set_epoch(self, epoch):
-        self.current_epoch = epoch
+            param_group['lr'] = param_group['initial_lr'] * lr_factor
 
     def train_epoch(self):
         self.model.train()
         total_loss = 0.0
-        total_lm_loss = 0.0
         total_code_loss = 0.0
-        total_speaker_loss = 0.0
         num_batches = 0
 
         train_code_correct = 0
-        train_speaker_correct = 0
         train_code_total = 0
-        train_speaker_total = 0
 
         for batch in self.train_loader:
             self._update_lr()
@@ -649,7 +616,7 @@ class Trainer:
             code_labels = batch['code_label'].to(DEVICE)
             speaker_labels = batch['speaker_label'].to(DEVICE)
 
-            lm_logits, code_logits, corr_logits, speaker_logits = self.model(input_ids, attention_mask)
+            lm_logits, code_logits, speaker_logits = self.model(input_ids, attention_mask)
 
             lm_loss = self.ce_lm(lm_logits.view(-1, lm_logits.size(-1)), lm_labels.view(-1))
 
@@ -672,9 +639,7 @@ class Trainer:
             self.optimizer.step()
 
             total_loss += loss.item()
-            total_lm_loss += lm_loss.item()
             total_code_loss += code_loss.item()
-            total_speaker_loss += speaker_loss.item()
             num_batches += 1
 
             if code_mask.any():
@@ -682,40 +647,28 @@ class Trainer:
                 train_code_correct += (pred_codes[code_mask] == code_labels[code_mask]).sum().item()
                 train_code_total += code_mask.sum().item()
 
-            if speaker_mask.any():
-                pred_speakers = torch.argmax(speaker_logits, dim=1)
-                train_speaker_correct += (pred_speakers[speaker_mask] == speaker_labels[speaker_mask]).sum().item()
-                train_speaker_total += speaker_mask.sum().item()
-
         return {
-            'total_loss': total_loss / max(1, num_batches),
-            'lm_loss': total_lm_loss / max(1, num_batches),
+            'loss': total_loss / max(1, num_batches),
             'code_loss': total_code_loss / max(1, num_batches),
-            'speaker_loss': total_speaker_loss / max(1, num_batches),
-            'code_acc': train_code_correct / max(1, train_code_total),
-            'speaker_acc': train_speaker_correct / max(1, train_speaker_total),
+            'code_acc': train_code_correct / max(1, train_code_total)
         }
 
-    def evaluate(self, loader, show_predictions=False):
+    def evaluate(self):
         self.model.eval()
         total_loss = 0.0
         code_correct = 0
-        speaker_correct = 0
         code_total = 0
-        speaker_total = 0
         num_batches = 0
 
-        predictions = []
-
         with torch.no_grad():
-            for batch in loader:
+            for batch in self.val_loader:
                 input_ids = batch['input_ids'].to(DEVICE)
                 attention_mask = batch['attention_mask'].to(DEVICE)
                 lm_labels = batch['lm_labels'].to(DEVICE)
                 code_labels = batch['code_label'].to(DEVICE)
                 speaker_labels = batch['speaker_label'].to(DEVICE)
 
-                lm_logits, code_logits, corr_logits, speaker_logits = self.model(input_ids, attention_mask)
+                lm_logits, code_logits, speaker_logits = self.model(input_ids, attention_mask)
 
                 lm_loss = self.ce_lm(lm_logits.view(-1, lm_logits.size(-1)), lm_labels.view(-1))
 
@@ -739,99 +692,117 @@ class Trainer:
                     code_correct += (pred_codes[code_mask] == code_labels[code_mask]).sum().item()
                     code_total += code_mask.sum().item()
 
-                    if show_predictions:
-                        for i in range(len(code_labels)):
-                            if code_mask[i]:
-                                pred = CODE_ID_TO_STR.get(pred_codes[i].item(), "?")
-                                actual = CODE_ID_TO_STR.get(code_labels[i].item(), "?")
-                                predictions.append((pred, actual))
-
-                if speaker_mask.any():
-                    pred_speakers = torch.argmax(speaker_logits, dim=1)
-                    speaker_correct += (pred_speakers[speaker_mask] == speaker_labels[speaker_mask]).sum().item()
-                    speaker_total += speaker_mask.sum().item()
-
-        if show_predictions and predictions:
-            print("\n  Predictions (pred -> actual):")
-            for pred, actual in predictions[:10]:
-                match = "Y" if pred == actual else "X"
-                print(f"    {match} {pred} -> {actual}")
-
         return {
             'loss': total_loss / max(1, num_batches),
-            'code_acc': code_correct / max(1, code_total),
-            'speaker_acc': speaker_correct / max(1, speaker_total)
+            'code_acc': code_correct / max(1, code_total)
         }
 
-    def evaluate_val(self):
-        results = self.evaluate(self.val_loader, show_predictions=True)
-        return results['loss'], results['code_acc'], results['speaker_acc']
+# =========================================================================
+# 9. ENSEMBLE - Majority voting across 5 voters
+# =========================================================================
 
-    def evaluate_test(self):
-        if self.test_loader is None:
-            return 0.0, 0.0, 0.0
-        results = self.evaluate(self.test_loader, show_predictions=True)
-        return results['loss'], results['code_acc'], results['speaker_acc']
+class VoterEnsemble:
+    def __init__(self, voters: List[VoterModel]):
+        self.voters = voters
 
-    def evaluate_sliding_window(self, dataset, window_size=SLIDING_WINDOW_SIZE):
-        """Evaluate using sliding window over the validation conversation."""
-        self.model.eval()
+    def predict(self, input_ids, attention_mask):
+        all_code_logits = []
 
-        results = []
-        num_windows = max(1, len(dataset) - window_size + 1)
+        with torch.no_grad():
+            for voter in self.voters:
+                voter.eval()
+                _, code_logits, _ = voter(input_ids, attention_mask)
+                all_code_logits.append(code_logits)
 
+        ensemble_logits = torch.stack(all_code_logits, dim=0).mean(dim=0)
+        predictions = torch.argmax(ensemble_logits, dim=1)
+
+        return predictions, ensemble_logits
+
+    def predict_majority_vote(self, input_ids, attention_mask):
+        all_predictions = []
+
+        with torch.no_grad():
+            for voter in self.voters:
+                voter.eval()
+                _, code_logits, _ = voter(input_ids, attention_mask)
+                preds = torch.argmax(code_logits, dim=1)
+                all_predictions.append(preds)
+
+        all_predictions = torch.stack(all_predictions, dim=0)
+
+        batch_size = all_predictions.shape[1]
+        final_predictions = []
+        for i in range(batch_size):
+            votes = all_predictions[:, i].tolist()
+            vote_counts = Counter(votes)
+            majority = vote_counts.most_common(1)[0][0]
+            final_predictions.append(majority)
+
+        return torch.tensor(final_predictions, device=input_ids.device)
+
+    def evaluate(self, dataloader, use_majority_vote=True):
         correct = 0
         total = 0
 
+        for batch in dataloader:
+            input_ids = batch['input_ids'].to(DEVICE)
+            attention_mask = batch['attention_mask'].to(DEVICE)
+            code_labels = batch['code_label'].to(DEVICE)
+
+            if use_majority_vote:
+                predictions = self.predict_majority_vote(input_ids, attention_mask)
+            else:
+                predictions, _ = self.predict(input_ids, attention_mask)
+
+            mask = code_labels != -100
+            if mask.any():
+                correct += (predictions[mask] == code_labels[mask]).sum().item()
+                total += mask.sum().item()
+
+        return correct / max(1, total)
+
+    def evaluate_sliding_window(self, dataset, window_size=SLIDING_WINDOW_SIZE, use_majority_vote=True):
+        """Evaluate using sliding window."""
+        correct = 0
+        total = 0
+
+        for voter in self.voters:
+            voter.eval()
+
         with torch.no_grad():
             for start_idx in range(0, len(dataset) - window_size + 1):
-                window_samples = [dataset[i] for i in range(start_idx, start_idx + window_size)]
-
-                # The last sample in the window is the one we predict
-                target_sample = window_samples[-1]
+                target_sample = dataset[start_idx + window_size - 1]
 
                 input_ids = target_sample['input_ids'].unsqueeze(0).to(DEVICE)
                 attention_mask = target_sample['attention_mask'].unsqueeze(0).to(DEVICE)
                 code_label = target_sample['code_label'].to(DEVICE)
 
-                _, code_logits, _, _ = self.model(input_ids, attention_mask)
-                pred = torch.argmax(code_logits, dim=1).item()
+                if use_majority_vote:
+                    pred = self.predict_majority_vote(input_ids, attention_mask).item()
+                else:
+                    pred = self.predict(input_ids, attention_mask)[0].item()
 
                 if code_label.item() != -100:
                     if pred == code_label.item():
                         correct += 1
                     total += 1
 
-                    results.append({
-                        'window_start': start_idx,
-                        'pred': CODE_ID_TO_STR.get(pred, "?"),
-                        'actual': CODE_ID_TO_STR.get(code_label.item(), "?"),
-                        'correct': pred == code_label.item()
-                    })
-
-        accuracy = correct / max(1, total)
-        return accuracy, results
+        return correct / max(1, total)
 
 # =========================================================================
-# 9. CHECKPOINT UTILITIES
+# 10. CHECKPOINT
 # =========================================================================
 
-def save_checkpoint(model, tokenizer, name):
+def save_checkpoint(model, name):
     import os
-    import json
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
-
     model_path = os.path.join(CHECKPOINT_DIR, f"{name}_model.pt")
     torch.save(model.state_dict(), model_path)
-
-    vocab_path = os.path.join(CHECKPOINT_DIR, f"{name}_vocab.json")
-    with open(vocab_path, "w") as f:
-        json.dump({"itos": tokenizer.itos, "stoi": tokenizer.stoi}, f)
-
-    print(f"[Checkpoint] Saved to {model_path}")
+    print(f"[Checkpoint] Saved {model_path}")
 
 # =========================================================================
-# 10. MAIN
+# 11. MAIN
 # =========================================================================
 
 if __name__ == "__main__":
@@ -848,8 +819,8 @@ if __name__ == "__main__":
 
     # Split by conversation: 4 train, 1 val (sliding window), 1 test
     train_convs = conversations[:-2]
-    val_conv = conversations[-2]  # For sliding window validation
-    test_conv = conversations[-1]  # For testing
+    val_conv = conversations[-2]
+    test_conv = conversations[-1]
 
     print(f"\n[Split]")
     print(f"  Train: {train_convs}")
@@ -867,56 +838,92 @@ if __name__ == "__main__":
     tokenizer = NegotiationTokenizer(max_vocab_size=32000, min_freq=2)
     tokenizer.build_from_files([DATA_FILE], text_column=TEXT_COL)
 
-    # Create datasets
-    train_dataset = NegotiationDataset(train_df, tokenizer)
-    val_dataset = NegotiationDataset(val_df, tokenizer)
-    test_dataset = NegotiationDataset(test_df, tokenizer)
-
-    # Create model
-    model = NegotiationGPT(vocab_size=tokenizer.vocab_size)
-
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total_params = sum(p.numel() for p in model.parameters())
-
-    print(f"\n--- NegotiationGPT (LoRA + Adaptive LR) ---")
+    print(f"\n--- 5-Voter Ensemble (one per vote column) ---")
     print(f"Device: {DEVICE}")
-    print(f"Vocab size: {tokenizer.vocab_size}")
-    print(f"Total params: {total_params:,}")
-    print(f"Trainable params: {trainable_params:,}")
+    print(f"Voter columns: {VOTER_LABEL_COLS}")
 
-    # Create trainer
-    trainer = Trainer(model, train_dataset, val_dataset, test_dataset)
+    # Create voters and their datasets
+    voters = []
+    trainers = []
 
-    # Training loop
+    for i, label_col in enumerate(VOTER_LABEL_COLS):
+        print(f"\n[Voter {i}] Creating dataset from '{label_col}'...")
+
+        train_dataset = VoterDataset(train_df.copy(), tokenizer, label_column=label_col)
+        val_dataset = VoterDataset(val_df.copy(), tokenizer, label_column=label_col)
+
+        voter = VoterModel(vocab_size=tokenizer.vocab_size, voter_id=i)
+        trainer = VoterTrainer(voter, train_dataset, val_dataset, voter_name=f"Voter-{i} ({label_col})")
+
+        voters.append(voter)
+        trainers.append(trainer)
+
+    # Train each voter
     for epoch in range(EPOCHS):
-        trainer.set_epoch(epoch)
-        train_metrics = trainer.train_epoch()
-        val_loss, val_code_acc, val_speaker_acc = trainer.evaluate_val()
+        print(f"\n{'='*60}")
+        print(f"EPOCH {epoch+1}/{EPOCHS}")
+        print(f"{'='*60}")
 
-        # Sliding window evaluation on validation conversation
-        sw_acc, sw_results = trainer.evaluate_sliding_window(val_dataset, SLIDING_WINDOW_SIZE)
+        for i, (trainer, label_col) in enumerate(zip(trainers, VOTER_LABEL_COLS)):
+            train_metrics = trainer.train_epoch()
+            val_metrics = trainer.evaluate()
 
-        print(f"\n[Epoch {epoch+1}/{EPOCHS}]")
-        print(f"  Train Loss: {train_metrics['total_loss']:.4f} (LM:{train_metrics['lm_loss']:.3f} | Code:{train_metrics['code_loss']:.3f} | Spk:{train_metrics['speaker_loss']:.3f})")
-        print(f"  Train Acc:  Code={train_metrics['code_acc']:.4f} | Speaker={train_metrics['speaker_acc']:.4f}")
-        print(f"  Val Loss:   {val_loss:.4f}")
-        print(f"  Val Acc:    Code={val_code_acc:.4f} | Speaker={val_speaker_acc:.4f}")
-        print(f"  Sliding Window Acc: {sw_acc:.4f} (window_size={SLIDING_WINDOW_SIZE})")
+            print(f"[{label_col}] Train: {train_metrics['loss']:.3f} | Acc: {train_metrics['code_acc']:.3f} | Val: {val_metrics['loss']:.3f} | Acc: {val_metrics['code_acc']:.3f}")
 
-        if val_loss < trainer.best_val_loss:
-            print(f"  Best: {trainer.best_val_loss:.4f} -> {val_loss:.4f} (saved)")
-            trainer.best_val_loss = val_loss
-            trainer.best_val_acc = val_code_acc
-            save_checkpoint(model, tokenizer, "best")
+            if val_metrics['loss'] < trainer.best_val_loss:
+                trainer.best_val_loss = val_metrics['loss']
+                trainer.best_val_acc = val_metrics['code_acc']
+                save_checkpoint(trainer.model, f"voter_{i}_{label_col}_best")
 
-    # Final test evaluation
-    print("\n" + "="*60)
-    print("FINAL TEST EVALUATION")
-    print("="*60)
-    test_loss, test_code_acc, test_speaker_acc = trainer.evaluate_test()
-    print(f"Test Loss: {test_loss:.4f}")
-    print(f"Test Code Acc: {test_code_acc:.4f}")
-    print(f"Test Speaker Acc: {test_speaker_acc:.4f}")
+    # Evaluate ensemble on test set using Final_Code as ground truth
+    print(f"\n{'='*60}")
+    print("ENSEMBLE EVALUATION")
+    print(f"{'='*60}")
 
-    # Save final model
-    save_checkpoint(model, tokenizer, "final")
+    # Create test dataset with Final_Code as ground truth
+    test_dataset = VoterDataset(test_df.copy(), tokenizer, label_column="final_code")
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
+
+    ensemble = VoterEnsemble(voters)
+
+    # Evaluate with different methods
+    avg_acc = ensemble.evaluate(test_loader, use_majority_vote=False)
+    majority_acc = ensemble.evaluate(test_loader, use_majority_vote=True)
+
+    # Sliding window evaluation
+    val_dataset_final = VoterDataset(val_df.copy(), tokenizer, label_column="final_code")
+    sw_acc = ensemble.evaluate_sliding_window(val_dataset_final, SLIDING_WINDOW_SIZE)
+
+    print(f"\nTest Accuracy (vs Final_Code):")
+    print(f"  Averaged Logits: {avg_acc:.4f}")
+    print(f"  Majority Vote:   {majority_acc:.4f}")
+    print(f"\nSliding Window Accuracy (val set, window={SLIDING_WINDOW_SIZE}): {sw_acc:.4f}")
+
+    # Individual voter accuracies
+    print("\nIndividual Voter Accuracies (vs Final_Code):")
+    for i, (trainer, label_col) in enumerate(zip(trainers, VOTER_LABEL_COLS)):
+        trainer.model.eval()
+        correct = 0
+        total = 0
+        with torch.no_grad():
+            for batch in test_loader:
+                input_ids = batch['input_ids'].to(DEVICE)
+                attention_mask = batch['attention_mask'].to(DEVICE)
+                code_labels = batch['code_label'].to(DEVICE)
+
+                _, code_logits, _ = trainer.model(input_ids, attention_mask)
+                preds = torch.argmax(code_logits, dim=1)
+
+                mask = code_labels != -100
+                if mask.any():
+                    correct += (preds[mask] == code_labels[mask]).sum().item()
+                    total += mask.sum().item()
+
+        acc = correct / max(1, total)
+        print(f"  {label_col}: {acc:.4f}")
+
+    # Save final models
+    for i, (voter, label_col) in enumerate(zip(voters, VOTER_LABEL_COLS)):
+        save_checkpoint(voter, f"voter_{i}_{label_col}_final")
+
+    print(f"\n[Done] 5-voter ensemble training complete!")
