@@ -1,0 +1,17 @@
+{
+  "best_value": 0.5186440677966102,
+  "best_params": {
+    "d_model": 768,
+    "num_layers": 6,
+    "num_heads": 4,
+    "dropout_rate": 0.2,
+    "lora_rank": 8,
+    "lora_alpha": 28,
+    "learning_rate": 0.00019249220180313835,
+    "batch_size": 8,
+    "weight_decay": 0.04902719344408163,
+    "lambda_code": 3.0,
+    "lambda_speaker": 2.0
+  },
+  "n_trials": 20
+}
