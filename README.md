@@ -909,25 +909,35 @@ prediction = model.predict("I think we can agree on $50,000")
 
 ```
 NegotiationGPT/
-├── Sonnet4-consolidated.csv          # Training data
-├── NegotiationGPT.py                 # Custom transformer model
-├── VoterEnsembleGPT.py              # Custom GPT ensemble
-├── VoterEnsembleBERT.py             # BERT ensemble model
-├── optuna_tuning.py                 # Optuna for custom GPT
-├── optuna_tuning_bert.py            # Optuna for BERT
-├── train_bert_ensemble.py           # BERT training script
-├── train_optimized_ensemble.py      # GPT training script
-├── evaluate_single_bert.py          # Single BERT evaluation
-├── visualizations.ipynb             # Results visualization
-├── checkpoints/                     # Saved models & hyperparameters
+├── bert/                                  # All BERT-related files
+│   ├── VoterEnsembleBERT.py
+│   ├── evaluate_single_bert.py
+│   ├── optuna_tuning_bert.py
+│   ├── optuna_tuning_bert_per_voter.py
+│   └── train_bert_ensemble.py
+│
+├── checkpoints/                           # Saved results & hyperparameters
 │   ├── best_hyperparameters.json
 │   ├── best_hyperparameters_bert.json
-│   └── *.pt model files
-├── images/                          # Generated visualizations
+│   ├── custom_gpt_results.json
+│   └── single_bert_results.json
+│
+├── images/                                # Generated plots
 │   ├── accuracy_comparison.png
+│   ├── data_overview.png
+│   ├── loss_curves_all_models.png
 │   ├── overfitting_analysis.png
-│   └── *.png
-└── README.md                        # This file
+│   ├── overfitting_line_graph.png
+│   └── validation_vs_test_finding.png
+│
+├── NegotiationGPT.py                       # Custom transformer (GPT-style)
+├── VoterEnsembleGPT.py                     # GPT ensemble voting
+├── Sonnet4-consolidated.csv                # Main dataset
+├── optuna_tuning.py                        # GPT model tuning
+├── train_bert_combined.py                  # Combined BERT runner
+├── visualizations.ipynb                    # Notebook for generating figures
+│
+└── README.md                               # Main project documentation
 ```
 
 
