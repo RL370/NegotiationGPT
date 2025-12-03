@@ -1,0 +1,55 @@
+{
+  "project": "Custom GPT (Trained from Scratch)",
+  "models": {
+    "single": {
+      "model": "Custom GPT Single",
+      "train_acc": 0.9930,
+      "val_acc": 0.4881,
+      "test_acc": 0.4403,
+      "epochs_trained": 30,
+      "early_stopping": false,
+      "hyperparameters": {
+        "d_model": 512,
+        "num_layers": 6,
+        "num_heads": 8,
+        "dropout": 0.3,
+        "lora_rank": 8,
+        "lora_alpha": 16,
+        "learning_rate": 0.0003,
+        "lambda_code": 2.0,
+        "lambda_speaker": 1.0
+      }
+    },
+    "ensemble": {
+      "model": "Custom GPT Ensemble (5-voter)",
+      "train_acc_avg": 0.991,
+      "val_acc": 0.5119,
+      "test_acc_majority_vote": 0.4430,
+      "test_acc_avg_logits": 0.4367,
+      "epochs_trained": 30,
+      "voters": 5,
+      "hyperparameters": {
+        "d_model": 256,
+        "num_layers": 6,
+        "num_heads": 4,
+        "dropout": 0.3,
+        "lora_rank": 8,
+        "lora_alpha": 20,
+        "learning_rate": 0.00024284154985987303,
+        "batch_size": 8,
+        "weight_decay": 0.25,
+        "lambda_code": 1.5,
+        "lambda_speaker": 1.5
+      },
+      "optuna_trials": 50
+    }
+  },
+  "dataset": {
+    "train_samples": 802,
+    "val_samples": 332,
+    "test_samples": 168,
+    "total_conversations": 6,
+    "num_classes": 27
+  }
+}
+
