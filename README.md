@@ -24,7 +24,7 @@ That's exactly what NegotiationGPT tries to do—classify each utterance in a ne
 
 ### The Consolidated Dataset
 
-Our journey begins with raw negotiation transcripts—conversations between buyers and sellers negotiating over various items. Ryan consolidated these transcripts into a single dataset called `Sonnet4-consolidated.csv`, extracting each individual utterance along with its metadata.
+Our journey begins with raw negotiation transcripts—conversations between buyers and sellers negotiating over various items. We used consolidated transcript called `Sonnet4-consolidated.csv`, which extracts each individual utterance along with its metadata.
 
 **What does the data look like?**
 
