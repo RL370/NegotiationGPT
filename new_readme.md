@@ -517,6 +517,214 @@ This **12-point improvement** demonstrates the power of transfer learning, espec
 | Optuna Trials | 50 | 25 |
 
 
+## 3. Results & Visual Analysis
+
+### Performance Comparison
+
+![Accuracy Comparison](images/accuracy_comparison.png)
+*Figure 1: Validation vs Test accuracy for all four model configurations*
+
+### Fair Model Comparison Table
+
+| Model | Type | Val Acc | Test Acc | Optuna Trials | Training Method |
+|-------|------|---------|----------|---------------|-----------------|
+| **Custom Transformer** | Single | 51.19% | 44.00% | 50 | From Scratch (No Pretraining) |
+| **Custom Transformer** | Ensemble | 51.86% | 44.30% | 50 | From Scratch (No Pretraining) |
+| **BERT/RoBERTa** | Single | **62.37%** | 45.28% | 25 | Transfer Learning (Pretrained) |
+| **BERT/RoBERTa** | Ensemble | 57.90% | **55.97%** | 25 | Transfer Learning (Pretrained) |
+
+> **Random Baseline:** 3.7% (1/27 classes)  
+> **Note:** Custom Transformer trained from scratch (no pretraining), while BERT/RoBERTa uses pretrained RoBERTa-base weights fine-tuned with LoRA.
+
+### Overfitting Analysis: Training vs Test Accuracy
+
+![Overfitting Line Graph](images/overfitting_line_graph.png)
+*Figure 2: Training vs Test accuracy across models - showing the dramatic reduction in overfitting gap from Custom GPT to BERT*
+
+**Key Finding:** The gap between training and test accuracy shrinks dramatically as we move from Custom GPT (55% gap) to BERT Ensemble (19% gap). This demonstrates that transfer learning not only improves performance but also enables better generalization.
+
+| Model | Train Acc | Test Acc | Gap |
+|-------|-----------|----------|-----|
+| Custom GPT (Single) | 99% | 44% | **55%** |
+| Custom GPT (Ensemble) | 95% | 44% | **51%** |
+| BERT (Single) | 83% | 45% | **38%** |
+| BERT (Ensemble) | 75% | 56% | **19%** |
+
+### Loss Curves: Training Progression
+
+![Loss Curves](images/loss_curves_all_models.png)
+*Figure 3: Training and validation loss curves across all models - showing overfitting patterns*
+
+**Key Insights:**
+- **Custom GPT Single**: Training loss drops to 2.5 but validation loss increases to 13+ (severe overfitting)
+- **BERT Single**: Training loss drops to 1.6, validation loss increases after epoch 5 (early stopping at epoch 10)
+- **BERT Ensemble**: Most stable validation loss, early stopping at epoch 15
+- Red shaded regions mark where validation loss starts increasing (overfitting begins)
+
+### Key Results Summary
+
+**BERT outperforms Custom Transformer:**
+- Ensemble Test: +12% improvement (55.97% vs 44.30%)
+- Reduced overfitting gap by 32 percentage points
+
+**Our best model (BERT ensemble) is 15x better than random guessing** (55.97% vs 3.7%)
+
+---
+---
+
+## 4. Model & Data Cards
+
+### Model Card
+
+| Attribute | Value |
+|-----------|-------|
+| **Model Name** | NegotiationGPT-BERT-Ensemble |
+| **Version** | 1.0 |
+| **Base Model** | RoBERTa-base (125M params) |
+| **Fine-tuning Method** | LoRA (1.9M trainable params) |
+| **Task** | 27-class text classification |
+| **Input** | Negotiation utterance (max 256 tokens) |
+| **Output** | Negotiation code prediction |
+| **Framework** | PyTorch, Transformers, PEFT |
+| **Training Time** | ~2-3 hours |
+
+### Data Card
+
+| Attribute | Value |
+|-----------|-------|
+| **Dataset Name** | Sonnet4-consolidated.csv |
+| **Size** | ~1,300 samples |
+| **Classes** | 27 negotiation codes |
+| **Conversations** | 6 total |
+| **Train/Val/Test Split** | 802 / 332 / 168 samples |
+| **Split Method** | By conversation (prevents leakage) |
+| **Annotators** | 5 human annotators per utterance |
+| **Language** | English |
+
+---
+
+## 5. Assessment & Evaluation
+
+### Intended Uses
+
+- **Academic research** on negotiation analysis
+- **Educational tools** for negotiation training
+- **Automated annotation** of negotiation transcripts
+- **Pattern analysis** of negotiation strategies
+
+### Licenses
+
+| Component | License |
+|-----------|---------|
+| RoBERTa-base | Apache 2.0 (Meta AI) |
+| Our code | MIT License |
+| Transformers | Apache 2.0 |
+| PEFT | Apache 2.0 |
+
+### Ethical Considerations & Bias
+
+**Potential Biases:**
+
+| Bias Type | Description | Mitigation |
+|-----------|-------------|------------|
+| **Dataset Bias** | Training data may not represent all negotiation types | Document limitations; test on diverse scenarios |
+| **Annotator Bias** | 5 annotators may have systematic differences | Ensemble approach averages across annotators |
+| **Class Imbalance** | Some codes appear more frequently | Weighted loss function (lambda_code=2.0) |
+| **Cultural Bias** | Trained on English negotiations only | Acknowledge limitation; avoid cross-cultural claims |
+| **Speaker Bias** | Model should treat buyer/seller fairly | Include speaker classification as auxiliary task |
+
+**Fairness Considerations:**
+- Model should not discriminate based on speaker role
+- Equal treatment of all 27 negotiation codes
+- Transparent about model limitations and accuracy
+
+**Privacy:**
+- Training data contains negotiation transcripts
+- Ensure proper anonymization if used in production
+- Respect confidentiality of negotiation participants
+
+---
+
+## 6. Critical Analysis & Limitations
+
+### What This Project Reveals
+
+**1. Transfer learning is essential for small datasets**
+
+Training a language model from scratch on 1,300 samples is doomed to fail. Pre-trained models provide the foundational language understanding that allows learning from limited domain-specific data.
+
+**2. Parameter efficiency matters**
+
+LoRA's approach—training only 1.5% of parameters—isn't just about computational efficiency. It's a form of regularization that prevents overfitting on small datasets.
+
+**3. Ensemble methods capture human subjectivity**
+
+Negotiation coding is inherently subjective. Different annotators interpret utterances differently. By training 5 models on 5 different annotations, our ensemble embraces this subjectivity rather than fighting it.
+
+**4. Data splitting decisions have huge impact**
+
+Conversation-based splitting prevents data leakage and ensures we're truly testing generalization. Random splitting would have given us artificially inflated accuracy numbers.
+
+### Detailed Limitations
+
+**DATA LIMITATIONS**
+
+- Small dataset: Only 1,300 samples total
+- Few conversations: Only 6 conversations (limits diversity)
+- Class imbalance: Some codes have <20 samples
+- Single domain: Only buyer-seller negotiations
+- English only: No multilingual support
+
+**MODEL LIMITATIONS**
+
+- 56% accuracy: Significant room for improvement
+- No per-voter tuning for GPT: Could improve if done
+- Single hyperparameter set: Same params for all BERT voters
+- No context window: Each utterance classified independently
+- No speaker history: Doesn't track conversation flow
+
+**EXPERIMENTAL LIMITATIONS**
+
+- No cross-validation: Single train/val/test split
+- Limited test set: Only 168 samples (1 conversation)
+- No statistical significance testing
+- No comparison with other SOTA methods
+
+**GENERALIZATION LIMITATIONS**
+
+- Domain transfer: May not work on other negotiation types
+- Cultural transfer: Trained on specific cultural context
+- Real-world deployment: Not tested in production
+- Temporal shift: Negotiation styles may change over time
+
+### What's Next?
+
+**Immediate improvements:**
+1. **Expanded dataset training** (currently ongoing) — Training both Custom GPT and BERT models on combined dataset (~55,000 training samples from 5 datasets, 5,000 validation, 5,000 test). This addresses the data limitation and should improve generalization.
+2. **Per-voter Optuna tuning** — Find optimal hyperparameters for each voter separately
+3. **Data augmentation** — Paraphrasing and back-translation to increase training data
+4. **Larger models** — Test RoBERTa-large (355M parameters)
+
+**Long-term directions:**
+1. **Context modeling** — Use conversation history, not just single utterances
+2. **Multi-task learning** — Joint prediction of code + speaker + sentiment
+3. **Cross-domain evaluation** — Test on different negotiation contexts
+4. **Further data expansion** — Continue collecting diverse negotiation types beyond current 55K samples
+
+### Impact
+
+**Academic Impact:**
+- Demonstrates effectiveness of transfer learning on small, domain-specific datasets
+- Shows that ensemble methods can capture annotator subjectivity
+- Provides baseline for future negotiation classification research
+
+**Practical Impact:**
+- Reduces manual annotation costs (hours → seconds)
+- Enables large-scale negotiation analysis
+- Supports negotiation training and education
+
+---
+
 ### Setup Instructions & Usage Guide
 
 ### Prerequisites
@@ -586,7 +794,7 @@ ls -lh Sonnet4-consolidated.csv
 # - speaker: buyer/seller
 ```
 
-### 4. Training Options
+### 7. Training Options
 
 #### **Option 1: Train BERT Ensemble (Recommended)**
 
@@ -722,209 +930,6 @@ NegotiationGPT/
 └── README.md                        # This file
 ```
 
-
-## 4. Results & Visual Analysis
-
-### Performance Comparison
-
-![Accuracy Comparison](images/accuracy_comparison.png)
-*Figure 1: Validation vs Test accuracy for all four model configurations*
-
-### Fair Model Comparison Table
-
-| Model | Type | Val Acc | Test Acc | Optuna Trials | Training Method |
-|-------|------|---------|----------|---------------|-----------------|
-| **Custom Transformer** | Single | 51.19% | 44.00% | 50 | From Scratch (No Pretraining) |
-| **Custom Transformer** | Ensemble | 51.86% | 44.30% | 50 | From Scratch (No Pretraining) |
-| **BERT/RoBERTa** | Single | **62.37%** | 45.28% | 25 | Transfer Learning (Pretrained) |
-| **BERT/RoBERTa** | Ensemble | 57.90% | **55.97%** | 25 | Transfer Learning (Pretrained) |
-
-> **Random Baseline:** 3.7% (1/27 classes)  
-> **Note:** Custom Transformer trained from scratch (no pretraining), while BERT/RoBERTa uses pretrained RoBERTa-base weights fine-tuned with LoRA.
-
-### Key Finding: The Overfitting Trap
-
-![Validation vs Test Finding](images/validation_vs_test_finding.png)
-*Figure 2: Single BERT achieved highest validation but lowest test accuracy!*
-
-**What happened?** Single BERT learned the validation conversation *too well*. With only 1 conversation for validation, the model optimized for patterns specific to that conversation rather than learning general negotiation behaviors.
-
-**The lesson:** High validation accuracy ≠ High test accuracy, especially with small datasets. This is why **ensemble methods won**—they average across 5 annotator perspectives, reducing overfitting.
-
-### Overfitting Analysis
-
-![Overfitting Analysis](images/overfitting_analysis.png)
-*Figure 3: Training vs Test accuracy gap across all models*
-
-| Model | Train Acc | Test Acc | Gap |
-|-------|-----------|----------|-----|
-| Custom GPT (Single) | 99% | 44% | **55%** ← Severe |
-| Custom GPT (Ensemble) | 95% | 44% | **51%** ← Severe |
-| BERT (Single) | 83% | 45% | **38%** ← High |
-| BERT (Ensemble) | 75% | 56% | **19%** ← Best |
-
-### Key Results Summary
-
-**BERT outperforms Custom Transformer:**
-- Ensemble Test: +12% improvement (55.97% vs 44.30%)
-- Reduced overfitting gap by 32 percentage points
-
-**Our best model (BERT ensemble) is 15x better than random guessing** (55.97% vs 3.7%)
-
----
-
-## 5. Model & Data Cards
-
-### Model Card
-
-| Attribute | Value |
-|-----------|-------|
-| **Model Name** | NegotiationGPT-BERT-Ensemble |
-| **Version** | 1.0 |
-| **Base Model** | RoBERTa-base (125M params) |
-| **Fine-tuning Method** | LoRA (1.9M trainable params) |
-| **Task** | 27-class text classification |
-| **Input** | Negotiation utterance (max 256 tokens) |
-| **Output** | Negotiation code prediction |
-| **Framework** | PyTorch, Transformers, PEFT |
-| **Training Time** | ~2-3 hours |
-
-### Data Card
-
-| Attribute | Value |
-|-----------|-------|
-| **Dataset Name** | Sonnet4-consolidated.csv |
-| **Size** | ~1,300 samples |
-| **Classes** | 27 negotiation codes |
-| **Conversations** | 6 total |
-| **Train/Val/Test Split** | 802 / 332 / 168 samples |
-| **Split Method** | By conversation (prevents leakage) |
-| **Annotators** | 5 human annotators per utterance |
-| **Language** | English |
-
----
-
-## 6. Assessment & Evaluation
-
-### Intended Uses
-
-- **Academic research** on negotiation analysis
-- **Educational tools** for negotiation training
-- **Automated annotation** of negotiation transcripts
-- **Pattern analysis** of negotiation strategies
-
-### Licenses
-
-| Component | License |
-|-----------|---------|
-| RoBERTa-base | Apache 2.0 (Meta AI) |
-| Our code | MIT License |
-| Transformers | Apache 2.0 |
-| PEFT | Apache 2.0 |
-
-### Ethical Considerations & Bias
-
-**Potential Biases:**
-
-| Bias Type | Description | Mitigation |
-|-----------|-------------|------------|
-| **Dataset Bias** | Training data may not represent all negotiation types | Document limitations; test on diverse scenarios |
-| **Annotator Bias** | 5 annotators may have systematic differences | Ensemble approach averages across annotators |
-| **Class Imbalance** | Some codes appear more frequently | Weighted loss function (lambda_code=2.0) |
-| **Cultural Bias** | Trained on English negotiations only | Acknowledge limitation; avoid cross-cultural claims |
-| **Speaker Bias** | Model should treat buyer/seller fairly | Include speaker classification as auxiliary task |
-
-**Fairness Considerations:**
-- Model should not discriminate based on speaker role
-- Equal treatment of all 27 negotiation codes
-- Transparent about model limitations and accuracy
-
-**Privacy:**
-- Training data contains negotiation transcripts
-- Ensure proper anonymization if used in production
-- Respect confidentiality of negotiation participants
-
----
-
-## 7. Critical Analysis & Limitations
-
-### What This Project Reveals
-
-**1. Transfer learning is essential for small datasets**
-
-Training a language model from scratch on 1,300 samples is doomed to fail. Pre-trained models provide the foundational language understanding that allows learning from limited domain-specific data.
-
-**2. Parameter efficiency matters**
-
-LoRA's approach—training only 1.5% of parameters—isn't just about computational efficiency. It's a form of regularization that prevents overfitting on small datasets.
-
-**3. Ensemble methods capture human subjectivity**
-
-Negotiation coding is inherently subjective. Different annotators interpret utterances differently. By training 5 models on 5 different annotations, our ensemble embraces this subjectivity rather than fighting it.
-
-**4. Data splitting decisions have huge impact**
-
-Conversation-based splitting prevents data leakage and ensures we're truly testing generalization. Random splitting would have given us artificially inflated accuracy numbers.
-
-### Detailed Limitations
-
-**DATA LIMITATIONS**
-
-- Small dataset: Only 1,300 samples total
-- Few conversations: Only 6 conversations (limits diversity)
-- Class imbalance: Some codes have <20 samples
-- Single domain: Only buyer-seller negotiations
-- English only: No multilingual support
-
-**MODEL LIMITATIONS**
-
-- 56% accuracy: Significant room for improvement
-- No per-voter tuning for GPT: Could improve if done
-- Single hyperparameter set: Same params for all BERT voters
-- No context window: Each utterance classified independently
-- No speaker history: Doesn't track conversation flow
-
-**EXPERIMENTAL LIMITATIONS**
-
-- No cross-validation: Single train/val/test split
-- Limited test set: Only 168 samples (1 conversation)
-- No statistical significance testing
-- No comparison with other SOTA methods
-
-**GENERALIZATION LIMITATIONS**
-
-- Domain transfer: May not work on other negotiation types
-- Cultural transfer: Trained on specific cultural context
-- Real-world deployment: Not tested in production
-- Temporal shift: Negotiation styles may change over time
-
-### What's Next?
-
-**Immediate improvements:**
-1. **Expanded dataset training** (currently ongoing) — Training both Custom GPT and BERT models on combined dataset (~55,000 training samples from 5 datasets, 5,000 validation, 5,000 test). This addresses the data limitation and should improve generalization.
-2. **Per-voter Optuna tuning** — Find optimal hyperparameters for each voter separately
-3. **Data augmentation** — Paraphrasing and back-translation to increase training data
-4. **Larger models** — Test RoBERTa-large (355M parameters)
-
-**Long-term directions:**
-1. **Context modeling** — Use conversation history, not just single utterances
-2. **Multi-task learning** — Joint prediction of code + speaker + sentiment
-3. **Cross-domain evaluation** — Test on different negotiation contexts
-4. **Further data expansion** — Continue collecting diverse negotiation types beyond current 55K samples
-
-### Impact
-
-**Academic Impact:**
-- Demonstrates effectiveness of transfer learning on small, domain-specific datasets
-- Shows that ensemble methods can capture annotator subjectivity
-- Provides baseline for future negotiation classification research
-
-**Practical Impact:**
-- Reduces manual annotation costs (hours → seconds)
-- Enables large-scale negotiation analysis
-- Supports negotiation training and education
-
----
 
 ## 8. Documentation & Resources
 
