@@ -1147,10 +1147,10 @@ NegotiationGPT/
 ## Citation
 
 ```bibtex
-@misc{negotiationgpt2024,
+@misc{negotiationgpt2025,
   title={NegotiationGPT: BERT-Based Ensemble for Negotiation Code Classification},
   author={Kaymak, Alara and Li, Ryan},
-  year={2024},
+  year={2025},
   institution={Vanderbilt University - Data Science Institute},
   howpublished={\url{https://github.com/RL370/NegotiationGPT}}
 }
