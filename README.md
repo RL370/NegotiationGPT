@@ -1,4 +1,4 @@
-# NegotiationGPT: Understanding Negotiation Through Machine Learning
+# NegotiationGPT: Understanding Negotiation Through Generative AI
 
 **Presenters:** Alara Kaymak, Ryan Li  
 **Email:** alara.kaymak@vanderbilt.edu, ryan.li@vanderbilt.edu  
