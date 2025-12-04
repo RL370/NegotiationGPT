@@ -589,7 +589,7 @@ This **12-point improvement** demonstrates the power of transfer learning, espec
 | **Input** | Negotiation utterance (max 256 tokens) |
 | **Output** | Negotiation code prediction |
 | **Framework** | PyTorch (custom implementation) |
-| **Training Time** | ~4-5 hours (CPU) |
+| **Training Time** | ~4-5 hours |
 
 #### BERT/RoBERTa
 
@@ -603,7 +603,7 @@ This **12-point improvement** demonstrates the power of transfer learning, espec
 | **Input** | Negotiation utterance (max 256 tokens) |
 | **Output** | Negotiation code prediction |
 | **Framework** | PyTorch, Transformers, PEFT |
-| **Training Time** | ~2-3 hours (CPU) |
+| **Training Time** | ~2-3 hours |
 
 ### Data Card
 
