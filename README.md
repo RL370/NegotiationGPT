@@ -570,11 +570,28 @@ This **12-point improvement** demonstrates the power of transfer learning, espec
 **Our best model (BERT ensemble) is 15x better than random guessing** (55.97% vs 3.7%)
 
 ---
----
 
 ## 4. Model & Data Cards
 
-### Model Card
+### Model Cards
+
+#### Custom Transformer (GPT-style)
+
+| Attribute | Value |
+|-----------|-------|
+| **Model Name** | NegotiationGPT-Custom-Ensemble |
+| **Version** | 1.0 |
+| **Base Model** | None (trained from scratch) |
+| **Architecture** | 6-layer transformer, 8 attention heads |
+| **Parameters** | 20.6M (all trainable) |
+| **Fine-tuning Method** | LoRA (applied to custom model) |
+| **Task** | 27-class text classification |
+| **Input** | Negotiation utterance (max 256 tokens) |
+| **Output** | Negotiation code prediction |
+| **Framework** | PyTorch (custom implementation) |
+| **Training Time** | ~4-5 hours (CPU) |
+
+#### BERT/RoBERTa
 
 | Attribute | Value |
 |-----------|-------|
@@ -586,7 +603,7 @@ This **12-point improvement** demonstrates the power of transfer learning, espec
 | **Input** | Negotiation utterance (max 256 tokens) |
 | **Output** | Negotiation code prediction |
 | **Framework** | PyTorch, Transformers, PEFT |
-| **Training Time** | ~2-3 hours |
+| **Training Time** | ~2-3 hours (CPU) |
 
 ### Data Card
 
@@ -953,7 +970,8 @@ NegotiationGPT/
 1. **BERT**: Devlin et al. (2019). "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding." https://arxiv.org/abs/1810.04805
 2. **RoBERTa**: Liu et al. (2019). "RoBERTa: A Robustly Optimized BERT Pretraining Approach." https://arxiv.org/abs/1907.11692
 3. **LoRA**: Hu et al. (2021). "LoRA: Low-Rank Adaptation of Large Language Models." https://arxiv.org/abs/2106.09685
-
+4. **GPT-2**: Radford et al. (2019). "Language Models are Unsupervised Multitask Learners." https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf
+5. **Attention Mechanism**: Vaswani et al. (2017). "Attention Is All You Need." https://arxiv.org/abs/1706.03762
 **Libraries:**
 - Hugging Face Transformers: https://github.com/huggingface/transformers
 - PEFT: https://github.com/huggingface/peft
