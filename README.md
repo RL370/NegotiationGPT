@@ -458,44 +458,44 @@ This **12-point improvement** demonstrates the power of transfer learning, espec
 │              CUSTOM GPT TRAINING PIPELINE                       │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1. Load Data (Sonnet4-consolidated.csv)                       │
+│  1. Load Data (Sonnet4-consolidated.csv)                        │
 │           ↓                                                     │
-│  2. Split by Conversation (4 train, 1 val, 1 test)             │
+│  2. Split by Conversation (4 train, 1 val, 1 test)              │
 │           ↓                                                     │
-│  3. Build Custom Vocabulary (~1,800 tokens)                    │
+│  3. Build Custom Vocabulary (~1,800 tokens)                     │
 │           ↓                                                     │
-│  4. Optuna Hyperparameter Search (50 trials)                   │
+│  4. Optuna Hyperparameter Search (50 trials)                    │
 │           ↓                                                     │
-│  5. Initialize Transformer from Scratch (20.6M params)         │
+│  5. Initialize Transformer from Scratch (20.6M params)          │
 │           ↓                                                     │
-│  6. Apply LoRA Adapters (parameter-efficient training)         │
+│  6. Apply LoRA Adapters (parameter-efficient training)          │
 │           ↓                                                     │
-│  7. Train 5 Voters (each on different annotator labels)        │
+│  7. Train 5 Voters (each on different annotator labels)         │
 │           ↓                                                     │
-│  8. Early Stopping (patience=5 epochs)                         │
+│  8. Early Stopping (patience=5 epochs)                          │
 │           ↓                                                     │
-│  9. Ensemble Prediction (majority vote or avg logits)          │
+│  9. Ensemble Prediction (majority vote or avg logits)           │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ┌─────────────────────────────────────────────────────────────────┐
 │                 BERT TRAINING PIPELINE                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1. Load Data (Sonnet4-consolidated.csv)                       │
+│  1. Load Data (Sonnet4-consolidated.csv)                        │
 │           ↓                                                     │
-│  2. Split by Conversation (4 train, 1 val, 1 test)             │
+│  2. Split by Conversation (4 train, 1 val, 1 test)              │
 │           ↓                                                     │
-│  3. Optuna Hyperparameter Search (25 trials)                   │
+│  3. Optuna Hyperparameter Search (25 trials)                    │
 │           ↓                                                     │
-│  4. Load Pre-trained RoBERTa (125M params, frozen)             │
+│  4. Load Pre-trained RoBERTa (125M params, frozen)              │
 │           ↓                                                     │
-│  5. Apply LoRA Adapters (1.9M params, trainable)               │
+│  5. Apply LoRA Adapters (1.9M params, trainable)                │
 │           ↓                                                     │
-│  6. Train 5 Voters (each on different annotator labels)        │
+│  6. Train 5 Voters (each on different annotator labels)         │
 │           ↓                                                     │
-│  7. Early Stopping (patience=5 epochs)                         │
+│  7. Early Stopping (patience=5 epochs)                          │
 │           ↓                                                     │
-│  8. Ensemble Prediction (majority vote or avg logits)          │
+│  8. Ensemble Prediction (majority vote or avg logits)           │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -686,33 +686,37 @@ Conversation-based splitting prevents data leakage and ensures we're truly testi
 
 **DATA LIMITATIONS**
 
-- Small dataset: Only 1,300 samples total
-- Few conversations: Only 6 conversations (limits diversity)
-- Class imbalance: Some codes have <20 samples
+- Small dataset: Only 1,300 samples total (need 50K-100K for robust deep learning)
+- Few conversations: Only 6 conversations (limits diversity, need 1,000+)
+- Class imbalance: Some codes have <20 samples (need 1,000+ per class)
 - Single domain: Only buyer-seller negotiations
 - English only: No multilingual support
+- **Scale mismatch: 30K tokens vs 10M-1B needed for training from scratch**
 
 **MODEL LIMITATIONS**
 
-- 56% accuracy: Significant room for improvement
-- No per-voter tuning for GPT: Could improve if done
-- Single hyperparameter set: Same params for all BERT voters
-- No context window: Each utterance classified independently
-- No speaker history: Doesn't track conversation flow
+- 56% accuracy: Limited by data scale, not model architecture
+- Custom GPT fundamentally limited: Cannot learn language from 30K tokens
+- Single pretrained architecture: Only tested RoBERTa, not DeBERTa, ELECTRA, or ALBERT
+- No context window: Each utterance classified independently (no conversation history)
+- No speaker history: Doesn't track patterns across turns in dialogue
+- Parameter efficiency: BERT LoRA trains 1.5% of parameters, but more might help with adequate data
 
 **EXPERIMENTAL LIMITATIONS**
 
-- No cross-validation: Single train/val/test split
-- Limited test set: Only 168 samples (1 conversation)
-- No statistical significance testing
-- No comparison with other SOTA methods
+- No cross-validation: Single train/val/test split (limited by conversation-based splitting requirement)
+- Limited test set: Only 168 samples (1 conversation) - insufficient for statistical robustness
+- No statistical significance testing: Small test set precludes confidence intervals
+- No comparison with other pretrained models: Only compared custom vs RoBERTa
+- No ablation studies: Didn't systematically test impact of each component
 
 **GENERALIZATION LIMITATIONS**
 
-- Domain transfer: May not work on other negotiation types
-- Cultural transfer: Trained on specific cultural context
-- Real-world deployment: Not tested in production
-- Temporal shift: Negotiation styles may change over time
+- Domain transfer: May not work on other negotiation types (e.g., labor, diplomatic, conflict resolution)
+- Cultural transfer: Trained on specific cultural context and language patterns
+- Real-world deployment: Not tested in production, only academic evaluation
+- Temporal shift: Negotiation styles may change over time, model needs retraining
+- Data quality: Depends on annotator agreement and consistency
 
 ### What's Next?
 
@@ -727,6 +731,167 @@ Conversation-based splitting prevents data leakage and ensures we're truly testi
 2. **Multi-task learning** — Joint prediction of code + speaker + sentiment
 3. **Cross-domain evaluation** — Test on different negotiation contexts
 4. **Further data expansion** — Continue collecting diverse negotiation types beyond current 55K samples
+
+
+### Understanding the Scale Challenge: Why Training from Scratch Was Fundamentally Limited
+
+**An important lesson from this project: some problems cannot be solved with clever techniques or better hyperparameters—they require fundamentally different data scales.**
+
+#### The Scale Mismatch
+
+**What successful language models were trained on:**
+
+| Model | Training Data | Number of Tokens | Our Custom GPT Data |
+|-------|---------------|------------------|---------------------|
+| **GPT-2** | 40GB of text | ~10 billion tokens | ~30,000 tokens |
+| **GPT-3** | 570GB of text | ~300 billion tokens | ~30,000 tokens |
+| **BERT** | 16GB (Books + Wikipedia) | ~3.3 billion tokens | ~30,000 tokens |
+| **RoBERTa** | 160GB of text | ~33 billion tokens | ~30,000 tokens |
+| **LLaMA** | 1.4TB of text | ~1.4 trillion tokens | ~30,000 tokens |
+
+**Our Custom GPT:**
+- Training data: **1,300 utterances** (~30,000 tokens)
+- That's **0.0003%** of GPT-2's training data
+- That's **0.00001%** of GPT-3's training data
+
+**This isn't a small gap—it's a scale difference of 5-6 orders of magnitude.**
+
+#### The Dual Burden: Language + Task
+
+**What a language model must learn when training from scratch:**
+
+1. **Language Understanding (Foundation Layer)**
+   - Vocabulary: Which character sequences form meaningful words
+   - Syntax: How words combine grammatically ("I offer $50" vs "Offer I $50")
+   - Semantics: What words mean in context ("offer" as verb vs noun)
+   - World knowledge: Money, products, relationships, negotiation concepts
+   - **Industry requirement: 10M-1B tokens minimum**
+
+2. **Task-Specific Patterns (Our Goal)**
+   - Negotiation code classification
+   - Which utterances map to which of 27 codes
+   - Subtle distinctions (e.g., "offer statement" vs "offer modification")
+   - **Industry requirement: 10K-100K labeled samples per task**
+
+**With pretrained models (BERT):** Only need layer #2 (task-specific patterns)  
+**Training from scratch (Custom GPT):** Must learn both layers #1 AND #2 simultaneously
+
+**Our dataset: 1,300 samples (~30K tokens) must cover both requirements**
+
+#### Why This Cannot Be Fixed with Engineering
+
+**We tried multiple techniques to mitigate the data limitation:**
+
+| Technique | Purpose | Did It Help? | Why Not? |
+|-----------|---------|--------------|----------|
+| **LoRA** | Parameter-efficient training | Reduced overfitting slightly | Can't create training data that doesn't exist |
+| **Ensemble (5 voters)** | Average out errors, capture subjectivity | Minimal improvement (44.00% → 44.30%) | All voters memorize the same insufficient training set |
+| **Class weighting** | Balance loss across rare/common classes | Helped gradient flow | Can't learn patterns from 18 examples (rare classes) |
+| **Multi-task learning** | Speaker task provides auxiliary signal | Added context | Doesn't add language understanding |
+| **Optuna (50 trials)** | Find optimal hyperparameters | Found best config for this scale | Optimal for insufficient data is still insufficient |
+| **Dropout, weight decay** | Regularization to prevent overfitting | Standard practice | Prevents memorization but doesn't add knowledge |
+
+**The result: 99% training accuracy, 44% test accuracy**
+
+**The 55% train-test gap** isn't a bug we could fix—it's the inevitable consequence of asking a model to learn language + task from 30K tokens.
+
+**Class imbalance compounds the problem:**
+- Common classes: 180 samples → stable gradients
+- Rare classes: 18 samples → noisy gradients (10x smaller)
+- Weighted loss amplifies rare class errors → optimization instability
+
+**BERT's 56% accuracy (vs Custom GPT's 44%) isn't because we "fixed" anything—it's because BERT only needed to solve half the problem.**
+
+**But even BERT struggled:**
+- 56% accuracy (vs 27-class random baseline of 3.7%)
+- Still only slightly better than random for rare classes
+- **Because 1,300 samples is insufficient even when you only need to learn the task**
+
+#### The Harsh Mathematical Reality
+
+**Training from scratch requirements (from successful models):**
+
+| Requirement | Industry Minimum | Our Data | Gap |
+|-------------|------------------|----------|-----|
+| **Tokens for language learning** | 10M-1B | 30K | 300-33,000x |
+| **Samples per class (deep learning)** | 1,000-10,000 | 48 avg | 20-200x |
+| **Tokens per parameter** | 50-100 | 0.0015 | 33,000-66,000x |
+| **Diverse conversations** | 1,000-10,000 | 6 | 150-1,500x |
+
+**These aren't "we needed a bit more data" gaps. These are "we needed an entirely different scale" gaps.**
+
+**No technique can bridge a 300-33,000x data gap:**
+- Not better architectures
+- Not better hyperparameters  
+- Not better regularization
+- Not better loss functions
+- **Only more data**
+
+#### Why We Proceeded Anyway
+
+**Despite knowing the scale limitations, this experiment provided value:**
+
+1. **Empirical validation:** The 12-point gap (44% vs 56%) quantifies transfer learning's advantage
+2. **Understanding limits:** Demonstrates concretely what happens when scale requirements aren't met
+3. **Establishing baselines:** Necessary to measure the problem scope
+4. **Educational insight:** Shows why modern NLP abandoned training from scratch for most tasks
+5. **Architecture comparison:** Only tested RoBERTa—other pretrained models (DeBERTa, ELECTRA, ALBERT) might perform differently
+
+**The goal was to establish a from-scratch baseline and quantify the value of transfer learning.**
+
+#### The Expanded Dataset: Better, But Still Constrained
+
+**Our ongoing work with 55K samples:**
+- Tokens: ~1.5M (50x increase from 30K)
+- Samples: 55,000 (42x increase from 1,300)
+- Per class: ~2,000 (40x increase from 48)
+
+**Will this solve the Custom GPT problem?**
+
+| Model | Current (1.3K) | Expected (55K) | Why |
+|-------|----------------|----------------|-----|
+| **Custom GPT** | 44% | 50-60% | 1.5M tokens still << 10M-1B needed for language learning |
+| **BERT** | 56% | 70-80% | Sufficient task data + pretrained language = viable |
+
+**Even with 42x more data:**
+- Custom GPT remains below optimal scale (need 10-1000x more)
+- BERT can succeed because it only needs task data, not language data
+- **Transfer learning advantage persists at all realistic scales**
+
+#### The Fundamental Lesson
+
+**This project demonstrates a hard constraint in machine learning:**
+
+Some problems cannot be solved with:
+- ❌ Better architectures (we used transformers with attention)
+- ❌ Better optimization (we used AdamW, cosine annealing, gradient clipping)
+- ❌ Better hyperparameters (we ran 50 Optuna trials)
+- ❌ Better regularization (we used LoRA, dropout, weight decay)
+- ❌ Better techniques (we used ensembles, multi-task learning, class weighting)
+
+They can only be solved with:
+- ✅ **Fundamentally more data** (orders of magnitude more)
+- ✅ **OR leveraging pretrained knowledge** (transfer learning)
+
+**Our results prove this empirically:**
+- Custom GPT with 1,300 samples: 44% (all techniques applied, still insufficient)
+- BERT with 1,300 samples: 56% (same data, pretrained foundation, better results)
+- **The 12-point gap is the value of 33 billion pretrained tokens**
+
+#### Summary: Accepting the Limitation
+
+| Aspect | Reality |
+|--------|---------|
+| **Data scale** | 30K tokens vs 10M-1B needed → Cannot learn language |
+| **Samples per task** | 48 avg vs 1K-10K needed → Cannot learn robust patterns |
+| **Engineering fixes** | All applied, none bridged the scale gap |
+| **Custom GPT result** | 44% accuracy, 55% overfitting gap → Memorization |
+| **BERT result** | 56% accuracy, 19% overfitting gap → Partial learning |
+| **Conclusion** | **Training from scratch requires scale we don't have. Transfer learning is not optional—it's essential.** |
+
+This isn't a failure of technique or implementation. It's a demonstration that modern NLP's reliance on pretrained models is driven by fundamental mathematical constraints, not convenience.
+
+----
 
 ### Impact
 
