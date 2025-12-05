@@ -893,6 +893,24 @@ This isn't a failure of technique or implementation. It's a demonstration that m
 
 ----
 
+### Additional Model Training Visualizations
+
+**DistilBERT Training Loss:**
+
+![DistilBERT Loss Plot](images/loss_plot_distillbert.png)
+
+This visualization shows the training and validation loss curves for the DistilBERT model variant. DistilBERT, being a distilled version of BERT with 40% fewer parameters (66M vs 110M), offers a faster and more lightweight alternative while retaining much of BERT's performance.
+
+**ALBERT Training Loss:**
+
+![ALBERT Loss Plot](images/loss_plot_albert.png)
+
+This visualization displays the training and validation loss curves for the ALBERT (A Lite BERT) model variant. ALBERT uses parameter-sharing techniques and factorized embedding parameterization to reduce model size while maintaining performance.
+
+These additional model variants were explored to compare different parameter-efficient architectures beyond RoBERTa, examining the trade-offs between model size, training efficiency, and classification performance on our negotiation dataset.
+
+----
+
 ### Impact
 
 **Academic Impact:**
