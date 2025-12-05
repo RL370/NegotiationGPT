@@ -897,17 +897,29 @@ This isn't a failure of technique or implementation. It's a demonstration that m
 
 **DistilBERT Training Loss:**
 
-![DistilBERT Loss Plot](images/loss_plot_distilbert.png)
+![DistilBERT Loss Plot](images/loss_plot_distillbert.png)
 
-This visualization shows the training and validation loss curves for the DistilBERT model variant. DistilBERT, being a distilled version of BERT with 40% fewer parameters (66M vs 110M), offers a faster and more lightweight alternative while retaining much of BERT's performance.
+This visualization shows the training and validation loss curves for the DistilBERT model variant. DistilBERT, being a distilled version of BERT with 40% fewer parameters (66M vs 110M), offers a faster and more lightweight alternative while retaining much of BERT's performance. The loss curves demonstrate the model's learning progression and convergence behavior on the negotiation classification task.
+
+**Running the Models:**
+
+To train the DistilBERT model:
+```bash
+python3 NegotiationDistilBERT.py
+```
 
 **ALBERT Training Loss:**
 
 ![ALBERT Loss Plot](images/loss_plot_albert.png)
 
-This visualization displays the training and validation loss curves for the ALBERT (A Lite BERT) model variant. ALBERT uses parameter-sharing techniques and factorized embedding parameterization to reduce model size while maintaining performance.
+This visualization displays the training and validation loss curves for the ALBERT (A Lite BERT) model variant. ALBERT uses parameter-sharing techniques and factorized embedding parameterization to reduce model size while maintaining performance. The loss plot provides insights into how this parameter-efficient architecture learns the negotiation code classification task compared to the full RoBERTa model.
 
 These additional model variants were explored to compare different parameter-efficient architectures beyond RoBERTa, examining the trade-offs between model size, training efficiency, and classification performance on our negotiation dataset.
+
+To train the ALBERT model:
+```bash
+python3 NegotiationALBERT.py
+```
 
 ----
 
@@ -1152,9 +1164,11 @@ NegotiationGPT/
 **Models:**
 1. **BERT**: Devlin et al. (2019). "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding." https://arxiv.org/abs/1810.04805
 2. **RoBERTa**: Liu et al. (2019). "RoBERTa: A Robustly Optimized BERT Pretraining Approach." https://arxiv.org/abs/1907.11692
-3. **LoRA**: Hu et al. (2021). "LoRA: Low-Rank Adaptation of Large Language Models." https://arxiv.org/abs/2106.09685
-4. **GPT-2**: Radford et al. (2019). "Language Models are Unsupervised Multitask Learners." https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf
-5. **Attention Mechanism**: Vaswani et al. (2017). "Attention Is All You Need." https://arxiv.org/abs/1706.03762
+3. **DistilBERT**: Sanh et al. (2020). "DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter." https://arxiv.org/abs/1910.01108
+4. **ALBERT**: Lan et al. (2020). "ALBERT: A Lite BERT for Self-supervised Learning of Language Representations." Published at ICLR 2020. https://arxiv.org/abs/1909.11942
+5. **LoRA**: Hu et al. (2021). "LoRA: Low-Rank Adaptation of Large Language Models." https://arxiv.org/abs/2106.09685
+6. **GPT-2**: Radford et al. (2019). "Language Models are Unsupervised Multitask Learners." https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf
+7. **Attention Mechanism**: Vaswani et al. (2017). "Attention Is All You Need." https://arxiv.org/abs/1706.03762
 **Libraries:**
 - Hugging Face Transformers: https://github.com/huggingface/transformers
 - PEFT: https://github.com/huggingface/peft
