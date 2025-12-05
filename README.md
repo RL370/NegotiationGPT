@@ -897,7 +897,7 @@ This isn't a failure of technique or implementation. It's a demonstration that m
 
 **DistilBERT Training Loss:**
 
-![DistilBERT Loss Plot](images/loss_plot_distillbert.png)
+![DistilBERT Loss Plot](images/loss_plot_distilbert.png)
 
 This visualization shows the training and validation loss curves for the DistilBERT model variant. DistilBERT, being a distilled version of BERT with 40% fewer parameters (66M vs 110M), offers a faster and more lightweight alternative while retaining much of BERT's performance.
 
