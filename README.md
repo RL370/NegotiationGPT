@@ -907,7 +907,7 @@ After establishing that training from scratch was fundamentally limited by data 
 
 **DistilBERT Training Loss:**
 
-![DistilBERT Loss Plot](images/loss_plot_distillbert.png)
+![DistilBERT Loss Plot](images/loss_plot_distilbert.png)
 
 The DistilBERT training curves show stable convergence with minimal overfitting. The model achieved competitive performance on our negotiation task, validating that the distilled architecture retained sufficient capacity for domain-specific fine-tuning.
 
