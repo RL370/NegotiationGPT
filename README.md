@@ -1164,6 +1164,8 @@ NegotiationGPT/
 ├── optuna_tuning.py                        # GPT model tuning
 ├── train_bert_combined.py                  # Combined BERT runner
 ├── visualizations.ipynb                    # Notebook for generating figures
+├── NegotiationDistilBERT.py  
+├── NegotiationALBERT.py
 │
 └── README.md                               # Main project documentation
 ```
